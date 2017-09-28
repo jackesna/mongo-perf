@@ -178,7 +178,8 @@ def main():
 
     # Open a mongo shell subprocess and load necessary files.
     mongo_proc = Popen([args.shellpath, "--norc", "--quiet",
-                       "--host", args.hostname, "--port", args.port] + auth,
+                       "--host", args.hostname, "--port", args.port] + auth +
+                       [args.dbname],
                        stdin=PIPE, stdout=PIPE)
 
     # load test files
