@@ -173,7 +173,7 @@ def main():
     call([args.shellpath, "--norc",
           "--host", args.hostname, "--port", args.port,
           "--eval", "print('db version: ' + db.version());"
-          " db.serverBuildInfo().gitVersion;"] + auth)
+          " db.serverBuildInfo().gitVersion;"] + auth + dbname)
     print("")
 
     # Open a mongo shell subprocess and load necessary files.
