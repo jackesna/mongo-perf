@@ -1,6 +1,6 @@
 # Fork Information
 
-This is a fork from [MongoDB mongo-perf](https://github.com/mongodb/mongo-perf) project. The purpose is to restrict the testing database to specific one so we can test under a situation we don't have user permission to create new database. 
+This is a fork from [MongoDB mongo-perf](https://github.com/mongodb/mongo-perf) project. The purpose is to restrict the testing database to specific one so we can test under a situation we don't have user permission to create new database. The test will create collections which name starts with "PerfTest_".
 
 # MONGO-PERF:
 

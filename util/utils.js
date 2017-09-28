@@ -92,7 +92,7 @@ function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions
     var collections = [];
 
     var sibling_db = db.getSiblingDB(dbname);
-    var foo = test.name.replace(/\./g,"_");
+    var foo = 'PerfTest_' + test.name.replace(/\./g,"_");
     for (var i = 0; i < multicoll; i++) {
         var coll = sibling_db.getCollection(foo + i);
         collections.push(coll);
@@ -104,7 +104,7 @@ function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions
     test.ops.forEach(function (z) {
         // For loop is INSIDE for-each loop so that duplicated instructions are adjacent.
         // (& should not be factored out for that reason.)
-        for (var i = 0; i < (multicoll); i++) {
+        for (var i = 0; i < multicoll; i++) {
             var op = Object.extend({}, z, true);
             op = prepOp(collections[i], op);
             new_ops.push(op);
@@ -133,7 +133,7 @@ function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions
     };
 
     if ("pre" in test) {
-        for (var i = 0; i < (multicoll); i++) {
+        for (var i = 0; i < multicoll; i++) {
             test.pre(collections[i], env);
         }
     }
@@ -145,26 +145,26 @@ function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions
     // This will silently fail and with no side-effects if the collection
     // already exists.
     for (var i = 0; i < multicoll; i++) {
-        theDb.createCollection(collections[multicoll + i].getName());
+        theDb.createCollection(collections[i].getName());
     }
 
     if (shard == 1) {
         for (var i = 0; i < multicoll; i++) {
             // when shard is enabled, we want to enable shard
-            collections[multicoll + i].ensureIndex({ _id: "hashed" });
+            collections[i].ensureIndex({ _id: "hashed" });
         }
 
         sh.enableSharding(dbname);
         for (var i = 0; i < multicoll; i++) {
             var t = sh.shardCollection(dbname + "." +
-                collections[multicoll + i].getName(), {_id: "hashed"});
+                collections[i].getName(), {_id: "hashed"});
         }
 
     } else if (shard == 2) {
         sh.enableSharding(dbname);
         for (var i = 0; i < multicoll; i++) {
             var t = sh.shardCollection(dbname + "." +
-                collections[multicoll + i].getName(), {_id: 1});
+                collections[i].getName(), {_id: 1});
             }
     }
 
@@ -213,13 +213,13 @@ function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions
 
     if ("post" in test) {
         for (var i = 0; i < multicoll; i++) {
-            test.post(collections[multicoll + i], env);
+            test.post(collections[i], env);
         }
     }
 
     // drop all the collections created by this case
     for (var i = 0; i < multicoll; i++) {
-        collections[multicoll + i].drop();
+        collections[i].drop();
     }
 
     // Make sure all collections have been dropped

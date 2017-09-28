@@ -203,7 +203,7 @@ def main():
 
     cmdstr = ("mongoPerfRunTests(" +
               str(args.threads) + ", " +
-              str(args.dbname) + ", " +
+              str(json.dumps(args.dbname)) + ", " +
               str(args.multicoll) + ", " +
               str(args.seconds) + ", " +
               str(args.trials) + ", " +
