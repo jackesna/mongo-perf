@@ -1,3 +1,7 @@
+# Fork Information
+
+This is a fork project form [MongoDB mongo-perf](https://github.com/mongodb/mongo-perf) project. The purpose is to restrict the testing database to specific one so we can test under a situation we don't have user permission to create new database. 
+
 # MONGO-PERF:
 
 Mongo-perf (not to be confused with mongoperf) is a micro benchmarking tool for the MongoDB server. It measures throughput of commands with regards to the number of threads.
