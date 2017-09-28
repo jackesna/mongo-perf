@@ -69,23 +69,20 @@ function checkForDroppedCollections(database){
     return collection;
 }
 
-function checkForDroppedCollectionsTestDBs(db, multidb){
+function checkForDroppedCollectionsTestDBs(db, dbname){
     // Check for any collections in 'drop-pending' state in any test
-    // database. The test databases have name testN, where N is 0 to
-    // multidb - 1;
-    for (var i = 0; i < multidb; i++) {
-        var sibling_db = db.getSiblingDB('test' + i);
-        var retries = 0;
-        while (checkForDroppedCollections(sibling_db) && retries < 1000) {
-            print("Sleeping 1 second while waiting for collection to finish dropping")
-            retries += 1;
-            sleep(1000);
-        }
-        assert(retries < 1000, "Timeout on waiting for collections to drop");
+    // database.
+    var sibling_db = db.getSiblingDB(dbname);
+    var retries = 0;
+    while (checkForDroppedCollections(sibling_db) && retries < 1000) {
+        print("Sleeping 1 second while waiting for collection to finish dropping")
+        retries += 1;
+        sleep(1000);
     }
+    assert(retries < 1000, "Timeout on waiting for collections to drop");
 }
 
-function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOptions, printArgs, username, password) {
+function runTest(test, thread, dbname, multicoll, runSeconds, shard, crudOptions, printArgs, username, password) {
 
     if (typeof crudOptions === "undefined") crudOptions = getDefaultCrudOptions();
     if (typeof shard === "undefined") shard = 0;
@@ -94,14 +91,12 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
 
     var collections = [];
 
-    for (var i = 0; i < multidb; i++) {
-        var sibling_db = db.getSiblingDB('test' + i);
-        var foo = test.name.replace(/\./g,"_");
-        for (var j = 0; j < multicoll; j++) {
-            var coll = sibling_db.getCollection(foo + j);
-            collections.push(coll);
-            coll.drop();
-        }
+    var sibling_db = db.getSiblingDB(dbname);
+    var foo = test.name.replace(/\./g,"_");
+    for (var i = 0; i < multicoll; i++) {
+        var coll = sibling_db.getCollection(foo + i);
+        collections.push(coll);
+        coll.drop();
     }
 
     var new_ops = [];
@@ -109,7 +104,7 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
     test.ops.forEach(function (z) {
         // For loop is INSIDE for-each loop so that duplicated instructions are adjacent.
         // (& should not be factored out for that reason.)
-        for (var i = 0; i < (multidb * multicoll); i++) {
+        for (var i = 0; i < (multicoll); i++) {
             var op = Object.extend({}, z, true);
             op = prepOp(collections[i], op);
             new_ops.push(op);
@@ -138,7 +133,7 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
     };
 
     if ("pre" in test) {
-        for (var i = 0; i < (multidb * multicoll); i++) {
+        for (var i = 0; i < (multicoll); i++) {
             test.pre(collections[i], env);
         }
     }
@@ -146,33 +141,31 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
     // If the 'pre' function did not create the collections, then we should
     // explicitly do so now. We want the collections to be pre-allocated so
     // that allocation time is not incorporated into the benchmark.
-    for (var i = 0; i < multidb; i++) {
-        var theDb = db.getSiblingDB('test' + i);
-        // This will silently fail and with no side-effects if the collection
-        // already exists.
-        for (var j = 0; j < multicoll; j++) {
-            theDb.createCollection(collections[(multicoll * i) + j].getName());
+    var theDb = db.getSiblingDB(dbname);
+    // This will silently fail and with no side-effects if the collection
+    // already exists.
+    for (var i = 0; i < multicoll; i++) {
+        theDb.createCollection(collections[multicoll + i].getName());
+    }
+
+    if (shard == 1) {
+        for (var i = 0; i < multicoll; i++) {
+            // when shard is enabled, we want to enable shard
+            collections[multicoll + i].ensureIndex({ _id: "hashed" });
         }
 
-        if (shard == 1) {
-            for (var j = 0; j < multicoll; j++) {
-                // when shard is enabled, we want to enable shard
-                collections[(multicoll * i) + j].ensureIndex({ _id: "hashed" });
-            }
-
-            sh.enableSharding("test" + i);
-            for (var j = 0; j < multicoll; j++) {
-                var t = sh.shardCollection("test" + i + "." +
-                    collections[(multicoll * i) + j].getName(), {_id: "hashed"});
-            }
-
-        } else if (shard == 2) {
-            sh.enableSharding("test" + i);
-            for (var j = 0; j < multicoll; j++) {
-                var t = sh.shardCollection("test" + i + "." +
-                    collections[(multicoll * i) + j].getName(), {_id: 1});
-                }
+        sh.enableSharding(dbname);
+        for (var i = 0; i < multicoll; i++) {
+            var t = sh.shardCollection(dbname + "." +
+                collections[multicoll + i].getName(), {_id: "hashed"});
         }
+
+    } else if (shard == 2) {
+        sh.enableSharding(dbname);
+        for (var i = 0; i < multicoll; i++) {
+            var t = sh.shardCollection(dbname + "." +
+                collections[multicoll + i].getName(), {_id: 1});
+            }
     }
 
     // build a json document with arguments.
@@ -193,7 +186,7 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
 
     // Make sure the system is queisced
     // Check for dropped collections
-    checkForDroppedCollectionsTestDBs(db, multidb)
+    checkForDroppedCollectionsTestDBs(db, dbname)
     db.adminCommand({fsync: 1});
 
 
@@ -219,22 +212,18 @@ function runTest(test, thread, multidb, multicoll, runSeconds, shard, crudOption
     print("\t" + thread + "\t" + total + "\t" + error_string);
 
     if ("post" in test) {
-        for (var i = 0; i < multidb; i++) {
-            for (var j = 0; j < multicoll; j++) {
-                test.post(collections[(multicoll * i) + j], env);
-            }
+        for (var i = 0; i < multicoll; i++) {
+            test.post(collections[multicoll + i], env);
         }
     }
 
     // drop all the collections created by this case
-    for (var i = 0; i < multidb; i++) {
-        for (var j = 0; j < multicoll; j++) {
-            collections[(multicoll * i) + j].drop();
-        }
+    for (var i = 0; i < multicoll; i++) {
+        collections[multicoll + i].drop();
     }
 
     // Make sure all collections have been dropped
-    checkForDroppedCollectionsTestDBs(db, multidb)
+    checkForDroppedCollectionsTestDBs(db, dbname)
 
     return { ops_per_sec: total, error_count : result["errCount"]};
 }
@@ -345,7 +334,7 @@ function doExecute(test, includeFilter, excludeFilter) {
  * Run tests defined in a tests array (outside of the function)
  *
  * @param threadCounts - array of threads to use
- * @param multidb - multidb (number of dbs)
+ * @param dbname - test database name
  * @param multicoll - multicollection (number of collections)
  * @param seconds - the time to run each performance test for
  * @param trials - the number of trials to run
@@ -357,7 +346,7 @@ function doExecute(test, includeFilter, excludeFilter) {
  * @param excludeTestbed - Exclude testbed information from results
  * @returns {{}} the results of a run set of tests
  */
-function runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password) {
+function runTests(threadCounts, dbname, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password) {
 
     if (typeof shard === "undefined") shard = 0;
     if (typeof crudOptions === "undefined") crudOptions = getDefaultCrudOptions();
@@ -406,7 +395,7 @@ function runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilt
                 var newResults = {};
                 for (var j = 0; j < trials; j++) {
                     try {
-                        results[j] = runTest(test, threadCount, multidb, multicoll, seconds, shard, crudOptions, printArgs, username, password);
+                        results[j] = runTest(test, threadCount, dbname, multicoll, seconds, shard, crudOptions, printArgs, username, password);
                     }
                     catch(err) {
                         // Error handling to catch exceptions thrown in/by js for error
@@ -415,7 +404,7 @@ function runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilt
                         errors.push({test: test,
                                      trial: j,
                                      threadCount: threadCount,
-                                     multidb: multidb,
+                                     dbname: dbname,
                                      multicoll: multicoll,
                                      shard: shard,
                                      crudOptions: crudOptions,
@@ -455,7 +444,7 @@ function runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilt
  * Run tests defined in a tests array (outside of the function)
  *
  * @param threadCounts - array of threads to use
- * @param multidb - multidb (number of dbs)
+ * @param dbname - test database name
  * @param multicoll - multicollection (number of collections)
  * @param seconds - the time to run each performance test for
  * @param trials - the number of trials to run
@@ -466,8 +455,8 @@ function runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilt
  * @param excludeTestbed - Exclude testbed information from results
  * @returns {{}} the results of a run set of tests
  */
-function mongoPerfRunTests(threadCounts, multidb, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password) {
-    testResults = runTests(threadCounts, multidb, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password);
+function mongoPerfRunTests(threadCounts, dbname, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password) {
+    testResults = runTests(threadCounts, dbname, multicoll, seconds, trials, includeFilter, excludeFilter, shard, crudOptions, excludeTestbed, printArgs, username, password);
     print("@@@RESULTS_START@@@");
     print(JSON.stringify(testResults));
     print("@@@RESULTS_END@@@");

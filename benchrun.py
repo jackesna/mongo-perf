@@ -23,9 +23,9 @@ def parse_arguments():
     parser.add_argument('-t', '--threads', dest='threads', nargs="+",
                         help='Specify which thread configuration to use',
                         type=int, default=[1, 2, 4, 8, 12, 16])
-    parser.add_argument('-m', '--multidb', dest='multidb',
-                        help='Specify how many databases the test should use',
-                        type=int, default=1)
+    parser.add_argument('-d', '--database', dest='dbname',
+                        help='Specify test database name',
+                        default=None)
     parser.add_argument('-c', '--multicoll', dest='multicoll',
                         help='Specify how many collections the test should use',
                         type=int, default=1)
@@ -132,9 +132,10 @@ def main():
                   % testfile)
             sys.exit(1)
 
-    if args.multidb < 1:
-        print("MultiDB option must be greater than zero. Will be set to 1.")
-        args.multidb = 1
+    if not args.dbname:
+        print("Must provide test database name."
+              " Run with --help for details.")
+        sys.exit(1)
 
     if args.multicoll < 1:
         print("MultiCollection option must be greater than zero."
@@ -177,7 +178,7 @@ def main():
 
     # Open a mongo shell subprocess and load necessary files.
     mongo_proc = Popen([args.shellpath, "--norc", "--quiet",
-                       "--host", args.hostname, "--port", args.port] + auth, 
+                       "--host", args.hostname, "--port", args.port] + auth,
                        stdin=PIPE, stdout=PIPE)
 
     # load test files
@@ -202,14 +203,14 @@ def main():
 
     cmdstr = ("mongoPerfRunTests(" +
               str(args.threads) + ", " +
-              str(args.multidb) + ", " +
+              str(args.dbname) + ", " +
               str(args.multicoll) + ", " +
               str(args.seconds) + ", " +
               str(args.trials) + ", " +
               str(json.dumps(args.includeFilter)) + ", " +
               str(json.dumps(args.excludeFilter)) + ", " +
               str(args.shard) + ", " +
-              str(json.dumps(crud_options)) + ", " + 
+              str(json.dumps(crud_options)) + ", " +
               str(args.excludeTestbed) + ", " +
               str(args.printArgs) +
               authstr +
