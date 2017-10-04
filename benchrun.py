@@ -26,6 +26,9 @@ def parse_arguments():
     parser.add_argument('-d', '--database', dest='dbname',
                         help='Specify test database name',
                         default=None)
+    parser.add_argument('-a', '--authdb', dest='authdb',
+                        help='Specify authentication database name',
+                        default=None)
     parser.add_argument('-c', '--multicoll', dest='multicoll',
                         help='Specify how many collections the test should use',
                         type=int, default=1)
@@ -50,6 +53,8 @@ def parse_arguments():
     parser.add_argument('-p', '--password', dest='password',
                         help='password to use for mongodb authentication',
                         default=None)
+    parser.add_argument('--ssl', action='store_true', dest='ssl',
+                        help='Specify if using ssl connection')
     parser.add_argument('--shard', dest='shard',
                         help='Specify shard cluster the test should use, 0 - no shard, 1 - shard with {_id: hashed}, 2 - shard with {_id: 1}',
                         type=int, default=0, choices=[0, 1, 2])
@@ -111,9 +116,15 @@ def load_file_in_shell(subproc, file, echo=True):
     if echo:
         print(cmd)
     subproc.stdin.write(cmd)
+    # mongo atlas may return two lines
     line = subproc.stdout.readline().strip()
-    if line != "true":
-        raise MongoShellCommandError("unable to load file %s message was %s"
+    if line == "true":
+        return
+    line = subproc.stdout.readline().strip()
+    if line == "true":
+        return
+
+    raise MongoShellCommandError("unable to load file %s message was %s"
                                      % (file, line))
 
 
@@ -150,9 +161,14 @@ def main():
         args.shard = 2
 
     auth = []
+    authdb = "admin"
+    if args.authdb:
+        authdb = args.authdb
+    elif args.dbname:
+        authdb = args.dbname
     using_auth = False
     if isinstance(args.username, basestring) and isinstance(args.password, basestring):
-        auth = ["-u", args.username, "-p", args.password, "--authenticationDatabase", "admin"]
+        auth = ["-u", args.username, "-p", args.password, "--authenticationDatabase", authdb]
         using_auth = True
     elif isinstance(args.username, basestring) or isinstance(args.password, basestring):
         print("Warning: You specified one of username or password, but not the other.")
@@ -166,20 +182,31 @@ def main():
             args.includeFilter = '%'
 
     if args.username:
-        auth = ["-u", args.username, "-p", args.password, "--authenticationDatabase", "admin"]
+        auth = ["-u", args.username, "-p", args.password, "--authenticationDatabase", authdb]
     else:
         auth = []
 
-    call([args.shellpath, "--norc",
-          "--host", args.hostname, "--port", args.port,
-          "--eval", "print('db version: ' + db.version());"
-          " db.serverBuildInfo().gitVersion;"] + auth + [args.dbname])
+    if args.ssl:
+        ssl = ["--ssl"]
+    else:
+        ssl = []
+
+    connStr = 'mongodb://' + args.hostname
+    if not args.replica_set:
+        # port is ignored, which should be in hostname list
+        connStr += ':' + args.port
+    connStr += '/' + args.dbname
+    if args.replica_set:
+        connStr += '?replicaSet=' + args.replica_set
+
+    call([args.shellpath, "--norc"] +
+          ["--eval", "print('db version: ' + db.version());"
+          " db.serverBuildInfo().gitVersion;"] + auth + ssl + [connStr])
     print("")
 
     # Open a mongo shell subprocess and load necessary files.
-    mongo_proc = Popen([args.shellpath, "--norc", "--quiet",
-                       "--host", args.hostname, "--port", args.port] + auth +
-                       [args.dbname],
+    mongo_proc = Popen([args.shellpath, "--norc", "--quiet"] +
+                       auth + ssl + [connStr],
                        stdin=PIPE, stdout=PIPE)
 
     # load test files
